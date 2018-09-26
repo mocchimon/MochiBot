@@ -9,11 +9,11 @@ async def on_message(message):
     if message.author == client.user:
         return
 
-    if message.content.startswith('!hello'):
+    if message.content.startswith('!hi'):
         msg = 'Hello {0.author.mention} ~chi'.format(message)
         await client.send_message(message.channel, msg)
         
-    if message.content == "!hi":
+    if message.content == "!hello":
         await client.send_message(message.channel, "Hello World ~chi")
 
     if message.content == "!thicc":
@@ -21,6 +21,8 @@ async def on_message(message):
 
     if message.content == "!help":
         await client.send_message(message.channel, "Here are the commands ~chi: !hi, !help, !rolelist, !setrole, !yt, !kick, !ban, !thicc,")
+
+#mods stuff
 
     if message.content == "!kick":
         await client.send_message(message.channel, 'coming soon ~chi')
@@ -38,8 +40,20 @@ async def on_message(message):
     if message.content == "!setrole":
         await client.send_message(message.channel, 'season pass required ~chi')
 
+#youtube stuffs
+
     if message.content == "!yt":
         await client.send_message(message.channel, 'this will be paid dlc ~chi')
+
+    if message.content == "!play":
+        await client.send_message(message.channel, 'this will be paid dlc ~chi')
+
+    if message.content == "!skip":
+        await client.send_message(message.channel, 'this will be paid dlc ~chi')
+
+    if message.content == "!stop":
+        await client.send_message(message.channel, 'this will be paid dlc ~chi')
+
 
 @client.event
 async def on_ready():
