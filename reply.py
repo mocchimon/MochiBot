@@ -20,18 +20,20 @@ async def on_message(message):
         await client.send_message(message.channel, "Brooke is thicc! ~chi")
 
     if message.content == "!help":
-        await client.send_message(message.channel, "Here are the commands ~chi")
-        await client.send_message(message.channel, "!hi, !help, !rolelist, !setrole, !thicc,")
+        await client.send_message(message.channel, "Here are the commands ~chi: !hi, !help, !rolelist, !setrole, !yt, !kick, !ban, !thicc,")
+
+     if message.content == "!kick":
+        await client.send_message(message.channel, 'coming soon ~chi')
+
+    if message.content == "!ban":
+        await client.send_message(message.channel, 'coming soon ~chi')
 
     if message.content == "!rolelist":
-        ''' Displays all roles/IDs '''
         roles = message.server.roles
         result = 'The roles are '
         for role in roles:
             result = result + role.name + ': ' + ', '
-            result2 = result + role.name + ': ' + role.id + ', '
         await client.send_message(message.channel, result)
-        print(result2)
 
     if message.content == "!setrole":
         await client.send_message(message.channel, 'season pass required ~chi')
