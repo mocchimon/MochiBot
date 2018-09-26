@@ -22,7 +22,7 @@ async def on_message(message):
     if message.content == "!help":
         await client.send_message(message.channel, "Here are the commands ~chi: !hi, !help, !rolelist, !setrole, !yt, !kick, !ban, !thicc,")
 
-     if message.content == "!kick":
+    if message.content == "!kick":
         await client.send_message(message.channel, 'coming soon ~chi')
 
     if message.content == "!ban":
