@@ -34,6 +34,10 @@ async def on_message(message):
         print(result2)
 
     if message.content == "!setrole":
+        await client.send_message(message.channel, 'season pass required ~chi')
+
+    if message.content == "!yt":
+        await client.send_message(message.channel, 'this will be paid dlc ~chi')
 
 @client.event
 async def on_ready():
