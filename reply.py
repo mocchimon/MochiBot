@@ -9,11 +9,14 @@ async def on_message(message):
         return
 
     if message.content.startswith('!hello'):
-        msg = 'Hello {0.author.mention}'.format(message)
+        msg = 'Hello {0.author.mention} ~chi'.format(message)
         await client.send_message(message.channel, msg)
         
     if message.content == "!hi":
-        await client.send_message(message.channel, "Hello World")
+        await client.send_message(message.channel, "Hello World ~chi")
+
+    if message.content == "!rolelist":
+        await client.send_message(message.channel, "much roles ~chi")
 
 @client.event
 async def on_ready():
@@ -22,4 +25,4 @@ async def on_ready():
     print(client.user.id)
     print('------')
 
-client.run('TOKEN')
+client.run('NDkzNjQ4NDIyNjcxMzUxODE5.Do14IQ.-VGCqUCJgAIxx11KpI9gXX9Lzuc')
