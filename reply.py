@@ -21,13 +21,19 @@ async def on_message(message):
 
     if message.content == "!help":
         await client.send_message(message.channel, "Here are the commands ~chi")
-        await client.send_message(message.channel, "!hi, !help, !rolelist, !thicc")
+        await client.send_message(message.channel, "!hi, !help, !rolelist, !setrole, !thicc,")
 
     if message.content == "!rolelist":
+        ''' Displays all roles/IDs '''
         roles = message.server.roles
         result = 'The roles are '
-    for role in roles:
+        for role in roles:
+            result = result + role.name + ': ' + ', '
+            result2 = result + role.name + ': ' + role.id + ', '
         await client.send_message(message.channel, result)
+        print(result2)
+
+    if message.content == "!setrole":
 
 @client.event
 async def on_ready():
