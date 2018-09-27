@@ -44,7 +44,13 @@ async def help(ctx):
     embed.add_field(name="!cat", value="Gives a cute cat gif to lighten up the mood.", inline=False)
     embed.add_field(name="!info", value="Gives a little info about the bot", inline=False)
     embed.add_field(name="!help", value="Gives this message", inline=False)
-    embed.add_field(name="!roles", value="Set your role", inline=False)
+    embed.add_field(name="!roles", value="Lists all server roles", inline=False)
+    embed.add_field(name="!addroles", value="Set your role", inline=False)
+    embed.add_field(name="!removerole", value="Removes your role", inline=False)
+    embed.add_field(name="!yt", value="Displays youtube queue", inline=False)
+    embed.add_field(name="!play", value="Adds youtube videos to queue", inline=False)
+    embed.add_field(name="!skip", value="Skips youtube video", inline=False)
+    embed.add_field(name="!pause", value="Pause youtube video", inline=False)
     await bot.say(embed=embed)
 
 def on_command_error(self, error, ctx):
