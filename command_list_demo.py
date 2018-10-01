@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord.utils import get
 
 bot = commands.Bot(command_prefix='!')
 
@@ -25,6 +26,57 @@ async def roles(ctx):
     await bot.say(result)
 
 @bot.command(pass_context=True)
+async def addRole(ctx, *,role_name):
+    author = ctx.message.author
+    await bot.create_role(author.server, name=role_name)
+    await bot.say("The role: {} has been created!".format(role_name))
+
+@bot.command(pass_context=True)
+async def assign(ctx, user: discord.Member, *,role_name):
+    role = get(ctx.message.server.roles, name=role_name)
+    if role:
+        try:
+            await bot.add_roles(user, role)
+            await bot.say("The role: {} has been assigned!".format(role.name))
+        except discord.Forbidden:
+            await bot.say("Missing Permissions to unassign this role!")
+        else:
+            await bot.say("The role doesn't exist!")
+
+@bot.command(pass_context=True)
+async def unassign(ctx, user: discord.Member, *,role_name):
+    role = get(ctx.message.server.roles, name=role_name)
+    if role:
+        try:
+            await bot.remove_roles(user, role)
+            await bot.say("The role: {} has been removed!".format(role.name))
+        except discord.Forbidden:
+            await bot.say("Missing Permissions to unassign this role!")
+        else:
+            await bot.say("The role doesn't exist!")
+
+@bot.command(pass_context=True)
+async def delRole(ctx, *,role_name):
+    role = discord.utils.get(ctx.message.server.roles, name=role_name)
+    if role:
+        try:
+            await bot.delete_role(ctx.message.server, role)
+            await bot.say("The role: {} has been deleted!".format(role.name))
+        except discord.Forbidden:
+            await bot.say("Missing Permissions to delete this role!")
+    else:
+        await bot.say("The role doesn't exist!")
+
+@bot.command(pass_context=True)
+async def clear(ctx, amount=100):
+    channel = ctx.message.channel
+    messages = []
+    async for message in bot.logs_from(channel, limit=int(amount) + 1):
+        messages.append(message)
+    await bot.delete_messages(messages)
+    await bot.say('Messages deleted.')
+
+@bot.command(pass_context=True)
 async def info(ctx):
     embed = discord.Embed(title="Mochi bot", description="Mochiest bot there is ever.", color=0xeee657)
     # give info about you here
@@ -45,12 +97,15 @@ async def help(ctx):
     embed.add_field(name="!info", value="Gives a little info about the bot", inline=False)
     embed.add_field(name="!help", value="Gives this message", inline=False)
     embed.add_field(name="!roles", value="Lists all server roles", inline=False)
-    embed.add_field(name="!addroles", value="Set your role", inline=False)
-    embed.add_field(name="!removerole", value="Removes your role", inline=False)
+    embed.add_field(name="!addRoles", value="Create a new role", inline=False)
+    embed.add_field(name="!assign", value="Set user role", inline=False)
+    embed.add_field(name="!unassign", value="Removes user from role", inline=False)
+    embed.add_field(name="!deleteRole", value="Removes role from the server", inline=False)
     embed.add_field(name="!yt", value="Displays youtube queue", inline=False)
     embed.add_field(name="!play", value="Adds youtube videos to queue", inline=False)
     embed.add_field(name="!skip", value="Skips youtube video", inline=False)
     embed.add_field(name="!pause", value="Pause youtube video", inline=False)
+    embed.add_field(name="!clear", value="Clears all texts in the channel", inline=False)
     await bot.say(embed=embed)
 
 def on_command_error(self, error, ctx):
