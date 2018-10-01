@@ -17,8 +17,12 @@ async def greet(ctx):
     await bot.say(":smiley: :wave: Hello, there!" + ctx.message.author.mention)
 
 @bot.command(pass_context=True)
-async def cat(ctx):
-    await bot.say("https://media.giphy.com/media/JIX9t2j0ZTN9S/giphy.gif")
+async def memes(ctx):
+    await bot.say("Soon")
+
+@bot.command(pass_context=True)
+async def mochi(ctx):
+    await bot.say("https://media.giphy.com/media/pXIh4UdYWY1Da/giphy.gif")
 
 @bot.command(pass_context=True)
 async def roles(ctx):
@@ -35,36 +39,27 @@ async def addRole(ctx, *,role_name):
 async def assign(ctx, user: discord.Member, *,role_name):
     role = get(ctx.message.server.roles, name=role_name)
     if role:
-        try:
             await bot.add_roles(user, role)
-            await bot.say("The role: {} has been assigned!".format(role.name))
-        except discord.Forbidden:
-            await bot.say("Missing Permissions to unassign this role!")
-        else:
+            await bot.say("The role: {} has been assigned!".format(role_name))
+    if role is None:
             await bot.say("The role doesn't exist!")
 
 @bot.command(pass_context=True)
-async def unassign(ctx, user: discord.Member, *,role_name):
+async def unassign(ctx, user: discord.Member, *,role_name ):
     role = get(ctx.message.server.roles, name=role_name)
     if role:
-        try:
             await bot.remove_roles(user, role)
-            await bot.say("The role: {} has been removed!".format(role.name))
-        except discord.Forbidden:
-            await bot.say("Missing Permissions to unassign this role!")
-        else:
+            await bot.say("The role: {} has been removed!".format(role_name))
+    if role is None:
             await bot.say("The role doesn't exist!")
 
 @bot.command(pass_context=True)
 async def delRole(ctx, *,role_name):
     role = discord.utils.get(ctx.message.server.roles, name=role_name)
     if role:
-        try:
             await bot.delete_role(ctx.message.server, role)
-            await bot.say("The role: {} has been deleted!".format(role.name))
-        except discord.Forbidden:
-            await bot.say("Missing Permissions to delete this role!")
-    else:
+            await bot.say("The role: {} has been deleted!".format(role_name))
+    if role is None:
         await bot.say("The role doesn't exist!")
 
 @bot.command(pass_context=True)
