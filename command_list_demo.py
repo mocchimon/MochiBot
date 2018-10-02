@@ -90,13 +90,6 @@ async def clear(ctx, amount=100):
     await bot.delete_messages(messages)
     await bot.say('Messages deleted.')
 
-@bot.command(pass_context=True)
-async def info(ctx):
-    embed = discord.Embed(title="Mochi bot", description="Mochiest bot there is ever.", color=0xeee657)
-    # give info about you here
-    embed.add_field(name="Author", value="<Mochi#6689>")
-    await bot.say(embed=embed)
-
 bot.remove_command('help')
 
 @bot.command(pass_context=True)
