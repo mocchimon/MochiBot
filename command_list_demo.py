@@ -95,8 +95,6 @@ async def info(ctx):
     embed = discord.Embed(title="Mochi bot", description="Mochiest bot there is ever.", color=0xeee657)
     # give info about you here
     embed.add_field(name="Author", value="<Mochi#6689>")
-    # give users a link to invite this bot to their server
-    embed.add_field(name="Invite", value="[https://discordapp.com/oauth2/authorize?&client_id=493648422671351819&scope=bot&permissions=8]")
     await bot.say(embed=embed)
 
 bot.remove_command('help')
