@@ -1,6 +1,8 @@
 import discord
 from discord.ext import commands
 from discord.utils import get
+from discord.ext.commands import has_permissions
+
 
 bot = commands.Bot(command_prefix='!')
 
@@ -17,23 +19,27 @@ async def mochi(ctx):
     await bot.say("https://media.giphy.com/media/pXIh4UdYWY1Da/giphy.gif")
 
 @bot.command(pass_context=True)
+@has_permissions(manage_roles=True)
 async def roles(ctx):
     result = [role.name for role in ctx.message.server.roles if not role.is_everyone]
     await bot.say(result)
 
 @bot.command(pass_context=True)
-async def addRole(ctx, *,role_name):
+@has_permissions(manage_roles=True)
+async def addRole(ctx, *, role_name):
     author = ctx.message.author
     await bot.create_role(author.server, name=role_name)
     await bot.say("The role: {} has been created!".format(role_name))
 
 @bot.command(pass_context=True)
+@has_permissions(manage_roles=True)
 async def find(ctx, user: discord.Member):
     result = discord.utils.get(ctx.message.server.roles, name=user)
     await bot.say(result)
 #trying to pull all of user's roles to create a check
 
 @bot.command(pass_context=True)
+@has_permissions(manage_roles=True)
 async def assign(ctx, user: discord.Member, *,role_name):
     role = get(ctx.message.server.roles, name=role_name)
     if role:
@@ -45,6 +51,7 @@ async def assign(ctx, user: discord.Member, *,role_name):
         await bot.say("The role: {} doesn't exist".format(role_name))
 
 @bot.command(pass_context=True)
+@has_permissions(manage_roles=True)
 async def unassign(ctx, user: discord.Member, *,role_name ):
     role = get(ctx.message.server.roles, name=role_name)
     if role:
@@ -54,6 +61,7 @@ async def unassign(ctx, user: discord.Member, *,role_name ):
         await bot.say("The role: {} doesn't exist".format(role_name))
 
 @bot.command(pass_context=True)
+@has_permissions(manage_roles=True)
 async def delRole(ctx, *,role_name):
     role = discord.utils.get(ctx.message.server.roles, name=role_name)
     if role:
@@ -145,5 +153,4 @@ async def on_ready():
     print(bot.user.name)
     print(bot.user.id)
     print('------')
-
 bot.run('token')
