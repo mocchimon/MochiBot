@@ -28,13 +28,21 @@ async def addRole(ctx, *,role_name):
     await bot.say("The role: {} has been created!".format(role_name))
 
 @bot.command(pass_context=True)
+async def find(ctx, user: discord.Member):
+    result = discord.utils.get(ctx.message.server.roles, name=user)
+    await bot.say(result)
+#trying to pull all of user's roles to create a check
+
+@bot.command(pass_context=True)
 async def assign(ctx, user: discord.Member, *,role_name):
     role = get(ctx.message.server.roles, name=role_name)
     if role:
             await bot.add_roles(user, role)
             await bot.say("The role: {} has been assigned!".format(role_name))
+    elif role is roles:
+        await bot.say("Role already assigned")
     if role is None:
-            await bot.say("The role doesn't exist!")
+        await bot.say("The role: {} doesn't exist".format(role_name))
 
 @bot.command(pass_context=True)
 async def unassign(ctx, user: discord.Member, *,role_name ):
@@ -43,7 +51,7 @@ async def unassign(ctx, user: discord.Member, *,role_name ):
             await bot.remove_roles(user, role)
             await bot.say("The role: {} has been removed!".format(role_name))
     if role is None:
-            await bot.say("The role doesn't exist!")
+        await bot.say("The role: {} doesn't exist".format(role_name))
 
 @bot.command(pass_context=True)
 async def delRole(ctx, *,role_name):
@@ -53,6 +61,25 @@ async def delRole(ctx, *,role_name):
             await bot.say("The role: {} has been deleted!".format(role_name))
     if role is None:
         await bot.say("The role doesn't exist!")
+
+@bot.command(pass_context=True)
+async def yt(ctx, *, url):
+    author = ctx.message.author
+    voice_channel = ctx.message.author.voice.voice_channel
+    vc = await bot.join_voice_channel(voice_channel)
+    player = await vc.create_ytdl_player(url)
+    player.start()
+
+@bot.command(pass_context=True)
+async def out(ctx):
+    server = ctx.message.server
+    voice_channel = ctx.message.author.voice.voice_channel
+    voice = bot.join_voice_channel
+    if voice:
+        await voice.disconnect()
+        print("Bot left the voice channel")
+    else:
+        print("Bot was not in channel")
 
 @bot.command(pass_context=True)
 async def clear(ctx, amount=100):
