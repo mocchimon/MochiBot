@@ -33,22 +33,15 @@ async def addRole(ctx, *, role_name):
 
 @bot.command(pass_context=True)
 @has_permissions(manage_roles=True)
-async def find(ctx, user: discord.Member):
-    result = discord.utils.get(ctx.message.server.roles, name=user)
-    await bot.say(result)
-#trying to pull all of user's roles to create a check
-
-@bot.command(pass_context=True)
-@has_permissions(manage_roles=True)
-async def assign(ctx, user: discord.Member, *,role_name):
-    role = get(ctx.message.server.roles, name=role_name)
-    if role:
-            await bot.add_roles(user, role)
-            await bot.say("The role: {} has been assigned!".format(role_name))
-    elif role is roles:
-        await bot.say("Role already assigned")
-    if role is None:
-        await bot.say("The role: {} doesn't exist".format(role_name))
+async def assign(ctx, user: discord.Member, *, role_name):
+        role = get(ctx.message.server.roles, name=role_name)
+        result = [role.name for role in ctx.message.server.roles if not role.is_everyone]
+        if role_name in result:
+            if user is not role_name:
+                await bot.add_roles(user, role)
+                await bot.say("The role: {} has been assigned!".format(role_name))
+        if role_name is None:
+            await bot.say("The role: {} doesn't exist".format(role_name))
 
 @bot.command(pass_context=True)
 @has_permissions(manage_roles=True)
