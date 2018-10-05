@@ -37,9 +37,14 @@ async def assign(ctx, user: discord.Member, *, role_name):
         role = get(ctx.message.server.roles, name=role_name)
         result = [role.name for role in ctx.message.server.roles if not role.is_everyone]
         if role_name in result:
-            if user is not role_name:
+            if user.roles is not role_name:
                 await bot.add_roles(user, role)
                 await bot.say("The role: {} has been assigned!".format(role_name))
+        elif role_name in result:
+            if user.roles is role_name:
+                await bot.say("role: {} already assigned".format(role_name))
+        else:
+            await bot.say("unable to assign role:".format(role_name))
         if role_name is None:
             await bot.say("The role: {} doesn't exist".format(role_name))
 
