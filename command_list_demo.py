@@ -28,8 +28,12 @@ async def roles(ctx):
 @has_permissions(manage_roles=True)
 async def addRole(ctx, *, role_name):
     author = ctx.message.author
-    await bot.create_role(author.server, name=role_name)
-    await bot.say("The role: {} has been created!".format(role_name))
+    result = [role.name for role in ctx.message.server.roles if not role.is_everyone]
+    if role_name not in result:
+        await bot.create_role(author.server, name=role_name)
+        await bot.say("The role: {} has been created!".format(role_name))
+    else:
+        await bot.say("The role: {} is already created!".format(role_name))
 
 @bot.command(pass_context=True)
 @has_permissions(manage_roles=True)
