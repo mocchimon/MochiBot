@@ -36,37 +36,46 @@ async def addRole(ctx, *, role_name):
 async def assign(ctx, user: discord.Member, *, role_name):
         role = get(ctx.message.server.roles, name=role_name)
         result = [role.name for role in ctx.message.server.roles if not role.is_everyone]
+        role_names = [role.name for role in user.roles]
         if role_name in result:
-            if user.roles is not role_name:
+            if role_name not in role_names:
                 await bot.add_roles(user, role)
                 await bot.say("The role: {} has been assigned!".format(role_name))
-        elif role_name in result:
-            if user.roles is role_name:
-                await bot.say("role: {} already assigned".format(role_name))
         else:
-            await bot.say("unable to assign role:".format(role_name))
-        if role_name is None:
-            await bot.say("The role: {} doesn't exist".format(role_name))
+            await bot.say("{} can't be assigned".format(role_name))
+        if role_name not in result:
+            await bot.say("The role: {} doesn't exist!".format(role_name))
+        if role_name in role_names:
+            await bot.say("role: {} already assigned".format(role_name))
+
 
 @bot.command(pass_context=True)
 @has_permissions(manage_roles=True)
 async def unassign(ctx, user: discord.Member, *,role_name ):
     role = get(ctx.message.server.roles, name=role_name)
-    if role:
+    result = [role.name for role in ctx.message.server.roles if not role.is_everyone]
+    role_names = [role.name for role in user.roles]
+    if role_name in result:
+        if role_name in role_names:
             await bot.remove_roles(user, role)
             await bot.say("The role: {} has been removed!".format(role_name))
-    if role is None:
-        await bot.say("The role: {} doesn't exist".format(role_name))
+    if role_name not in result:
+        await bot.say("The role: {} doesn't exist!".format(role_name))
+    if role_name not in role_names:
+        await bot.say("User has no role: {}".format(role_name))
 
 @bot.command(pass_context=True)
 @has_permissions(manage_roles=True)
 async def delRole(ctx, *,role_name):
     role = discord.utils.get(ctx.message.server.roles, name=role_name)
-    if role:
+    result = [role.name for role in ctx.message.server.roles if not role.is_everyone]
+    if role_name in result:
             await bot.delete_role(ctx.message.server, role)
             await bot.say("The role: {} has been deleted!".format(role_name))
-    if role is None:
-        await bot.say("The role doesn't exist!")
+    if role_name is None:
+        await bot.say("The role {} doesn't exist!".format(role_name))
+    elif role not in result:
+        await bot.say("The role {} doesn't exist!".format(role_name))
 
 @bot.command(pass_context=True)
 async def yt(ctx, *, url):
