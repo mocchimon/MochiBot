@@ -1,63 +1,195 @@
 import discord
+from discord.ext import commands
+from discord.utils import get
+from discord.ext.commands import has_permissions
 
 
-client = discord.Client()
+bot = commands.Bot(command_prefix='!')
 
-@client.event
-async def on_message(message):
-    # we do not want the bot to reply to itself
-    if message.author == client.user:
-        return
+@bot.command(pass_context=True)
+async def greet(ctx):
+    await bot.say(":smiley: :wave: Hello, there ~chi!" + ctx.message.author.mention)
 
-    if message.content.startswith('!hi'):
-        msg = 'Hello {0.author.mention} ~chi'.format(message)
-        await client.send_message(message.channel, msg)
-        
-    if message.content == "!hello":
-        await client.send_message(message.channel, "Hello World ~chi")
+@bot.command(pass_context=True)
+async def memes(ctx):
+    await bot.say("Soon")
 
-    if message.content == "!thicc":
-        await client.send_message(message.channel, "Brooke is thicc! ~chi")
+@bot.command(pass_context=True)
+async def mochi(ctx):
+    await bot.say("https://media.giphy.com/media/pXIh4UdYWY1Da/giphy.gif")
 
-    if message.content == "!help":
-        await client.send_message(message.channel, "Here are the commands ~chi: !hi, !help, !rolelist, !setrole, !yt, !kick, !ban, !thicc,")
+@bot.command(pass_context=True)
+async def cat(ctx):
+    await bot.say("http://www.pbh2.com/wordpress/wp-content/uploads/2013/05/cutest-cat-gifs-kitten-meow.gif")
+
+@bot.command(pass_context=True)
+async def doge(ctx):
+    await bot.say("https://media.giphy.com/media/lHsCS3IickU7e/giphy.gif")
+
+@bot.command(pass_context=True)
+async def pokeinfo(ctx):
+    await bot.say("p!info")
+
+@bot.command(pass_context=True)
+async def pokestart(ctx):
+    await bot.say("p!start")
+
+@bot.command(pass_context=True)
+async def pokepick(ctx):
+    await bot.say("p!pick Litten")
+
+@bot.command(pass_context=True)
+@has_permissions(manage_roles=True)
+async def roles(ctx):
+    result = [role.name for role in ctx.message.server.roles if not role.is_everyone]
+    await bot.say(result)
+
+@bot.command(pass_context=True)
+@has_permissions(manage_roles=True)
+async def addRole(ctx, *, role_name):
+    author = ctx.message.author
+    result = [role.name for role in ctx.message.server.roles if not role.is_everyone]
+    if role_name not in result:
+        await bot.create_role(author.server, name=role_name)
+        await bot.say("The role: {} has been created!".format(role_name))
+    else:
+        await bot.say("The role: {} is already created!".format(role_name))
+
+@bot.command(pass_context=True)
+@has_permissions(manage_roles=True)
+async def assign(ctx, user: discord.Member, *, role_name):
+        role = get(ctx.message.server.roles, name=role_name)
+        result = [role.name for role in ctx.message.server.roles if not role.is_everyone]
+        role_names = [role.name for role in user.roles]
+        if role_name in result:
+            if role_name not in role_names:
+                await bot.add_roles(user, role)
+                await bot.say("The role: {} has been assigned!".format(role_name))
+        else:
+            await bot.say("{} can't be assigned".format(role_name))
+        if role_name not in result:
+            await bot.say("The role: {} doesn't exist!".format(role_name))
+        if role_name in role_names:
+            await bot.say("role: {} already assigned".format(role_name))
+
+@bot.command(pass_context=True)
+@has_permissions(manage_roles=True)
+async def unassign(ctx, user: discord.Member, *,role_name ):
+    role = get(ctx.message.server.roles, name=role_name)
+    result = [role.name for role in ctx.message.server.roles if not role.is_everyone]
+    role_names = [role.name for role in user.roles]
+    if role_name in result:
+        if role_name in role_names:
+            await bot.remove_roles(user, role)
+            await bot.say("The role: {} has been removed!".format(role_name))
+    if role_name not in result:
+        await bot.say("The role: {} doesn't exist!".format(role_name))
+    if role_name not in role_names:
+        await bot.say("User has no role: {}".format(role_name))
+
+@bot.command(pass_context=True)
+@has_permissions(manage_roles=True)
+async def delRole(ctx, *,role_name):
+    role = discord.utils.get(ctx.message.server.roles, name=role_name)
+    result = [role.name for role in ctx.message.server.roles if not role.is_everyone]
+    if role_name in result:
+            await bot.delete_role(ctx.message.server, role)
+            await bot.say("The role: {} has been deleted!".format(role_name))
+    else:
+            await bot.say("The role {} doesn't exist!".format(role_name))
 
 
-    if message.content == "!kick":
-        await client.send_message(message.channel, 'coming soon ~chi')
+@bot.command(pass_context=True)
+async def play(ctx, url):
+    server = ctx.message.server
+    voice_client = client.voice_client_in(server)
+    player = await voice_client.create_ytdl_player(url)
+    players[server.id] = player
+    player.start()
 
-    if message.content == "!ban":
-        await client.send_message(message.channel, 'coming soon ~chi')
+@bot.command(pass_context=True)
+async def leave(ctx):
+    server = ctx.message.server
+    voice_client = client.voice_client_in(server)
+    await voice_client.disconnect()
 
-    if message.content == "!rolelist":
-        roles = message.server.roles
-        result = 'The roles are '
-        for role in roles:
-            result = result + role.name + ': ' + ', '
-        await client.send_message(message.channel, result)
+@bot.command(pass_context=True)
+@has_permissions(manage_channels=True)
+async def clear(ctx, amount=100):
+    channel = ctx.message.channel
+    messages = []
+    async for message in bot.logs_from(channel, limit=int(amount) + 1):
+        messages.append(message)
+    await bot.delete_messages(messages)
+    await bot.say('Messages deleted.')
 
-    if message.content == "!setrole":
-        await client.send_message(message.channel, 'season pass required ~chi')
+bot.remove_command('help')
+
+@bot.command(pass_context=True)
+async def help(ctx):
+    embed = discord.Embed(title="nice bot", description="A Very mochi bot ~chi. List of commands are:", color=0xeee657)
+    embed.add_field(name="!greet", value="Gives a nice greet message", inline=False)
+    embed.add_field(name="!cat", value="Gives a cute cat gif to lighten up the mood.", inline=False)
+    embed.add_field(name="!info", value="Gives a little info about the bot", inline=False)
+    embed.add_field(name="!help", value="Gives this message", inline=False)
+    embed.add_field(name="!roles", value="Lists all roles in the server", inline=False)
+    embed.add_field(name="!addRoles", value="Create a new role", inline=False)
+    embed.add_field(name="!assign", value="Set user role", inline=False)
+    embed.add_field(name="!unassign", value="Removes user from role", inline=False)
+    embed.add_field(name="!delRole", value="Removes role from the server", inline=False)
+    embed.add_field(name="!poke", value="displays pokecord profile", inline=False)
+    embed.add_field(name="!yt", value="Displays youtube queue", inline=False)
+    embed.add_field(name="!play", value="Adds youtube videos to queue", inline=False)
+    embed.add_field(name="!skip", value="Skips youtube video", inline=False)
+    embed.add_field(name="!pause", value="Pause youtube video", inline=False)
+    embed.add_field(name="!clear", value="Clears all texts in the channel", inline=False)
+    await bot.say(embed=embed)
 
 
-    if message.content == "!yt":
-        await client.send_message(message.channel, 'this will be paid dlc ~chi')
+def on_command_error(self, error, ctx):
+        if isinstance(error, commands.NoPrivateMessage):
+            await
+            bot.send_message(ctx.message.author,
+                              "\N{WARNING SIGN} Sorry, you can't use this command in a private message!")
 
-    if message.content == "!play":
-        await client.send_message(message.channel, 'this will be paid dlc ~chi')
+        elif isinstance(error, commands.DisabledCommand):
+            await
+            bot.send_message(ctx.message.author, "\N{WARNING SIGN} Sorry, this command is disabled!")
 
-    if message.content == "!skip":
-        await client.send_message(message.channel, 'this will be paid dlc ~chi')
+        elif isinstance(error, commands.CommandOnCooldown):
+            await
+            bot.send_message(ctx.message.channel,
+                              f"{ctx.message.author.mention} slow down! Try again in {error.retry_after:.1f} seconds.")
 
-    if message.content == "!stop":
-        await client.send_message(message.channel, 'this will be paid dlc ~chi')
+        elif isinstance(error, commands.MissingRequiredArgument) or isinstance(error, commands.BadArgument):
+            await
+            bot.send_message(ctx.message.channel, f"\N{WARNING SIGN} {error}")
 
+        elif isinstance(error, commands.CommandInvokeError):
+            original_name = error.original.__class__.__name__
+            print(f"In {paint(ctx.command.qualified_name, 'b_red')}:")
+            traceback.print_tb(error.original.__traceback__)
+            print(f"{paint(original_name, 'red')}: {error.original}")
 
-@client.event
+        else:
+            print(f"{paint(type(error).__name__, 'b_red')}: {error}")
+
+@bot.event
 async def on_ready():
     print('Logged in as')
-    print(client.user.name)
-    print(client.user.id)
+    await bot.change_presence(game=discord.Game(name="Making a    bot"))
+    print(bot.user.name)
+    print(bot.user.id)
     print('------')
+
+
+@bot.event
+async def on_message(message):
+    author = message.author
+    if message.author == author:
+        return
+    if message.content == "Hello":
+        await bot.send_message(message.channel, "World")
+
 
 client.run('token')
