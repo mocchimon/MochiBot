@@ -2,7 +2,6 @@ from discord.ext import commands
 import discordSuperUtils
 from discordSuperUtils import MusicManager
 import discord
-import aiohttp
 
 client_id = "434afb9a84174e83bbbdc3ea3f49a961"
 client_secret = "d7e3e90db6a547c98da79deebfa58d39"
@@ -133,19 +132,6 @@ async def info(ctx):
 @bot.command(pass_context=True)
 async def mochi(ctx):
     await ctx.send("https://66.media.tumblr.com/93fcfa886fe7781eed0db910c19a09c3/tumblr_mt7emv63Zl1s5p5m0o1_400.gif")
-
-
-@bot.command()
-async def doge(ctx):
-   async with aiohttp.ClientSession() as session:
-      request = await session.get('http://shibe.online/api/shibes?count=1&urls=true&httpsUrls=true') # Make a request
-      dogjson = {'link'} #creating a key
-      dogjson2 = await request.json() # Convert it to a JSON dictionary
-      dogjson = dogjson2
-      await ctx.send (dogjson)
-   embed = discord.Embed(title="Doge!", color=discord.Color.purple()) # Create embed
-   embed.set_image(url=dogjson['link']) # Set the embed image to the value of the 'link' key (if there is no link key this wont work)
-   await ctx.send(embed=embed) # Send the embed
 
 @bot.command()
 async def autoplay(ctx):
