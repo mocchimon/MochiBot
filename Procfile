@@ -1,2 +1,2 @@
 heroku ps: worker=1
-web: python Mochibot3.py
+work:python Mochibot3.py
