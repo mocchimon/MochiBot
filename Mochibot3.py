@@ -2,6 +2,7 @@ from discord.ext import commands
 import discordSuperUtils
 from discordSuperUtils import MusicManager
 import discord
+import youtube_dl
 
 client_id = "434afb9a84174e83bbbdc3ea3f49a961"
 client_secret = "d7e3e90db6a547c98da79deebfa58d39"
@@ -63,7 +64,7 @@ async def join(ctx):
 async def play(ctx, *, query: str):
     if not ctx.voice_client or not ctx.voice_client.is_connected():
         await MusicManager.join(ctx)
-
+    
     async with ctx.typing():
         players = await MusicManager.create_player(query, ctx.author)
 
@@ -173,6 +174,9 @@ async def history(ctx):
 async def skip(ctx, index: int = None):
     await MusicManager.skip(ctx, index)
 
+@bot.command()
+async def next(ctx, index: int = None):
+    await MusicManager.skip(ctx, index)
 
 @bot.command()
 async def queue(ctx):
