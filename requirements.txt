@@ -1,6 +1,0 @@
-discord.py
-youtube-dl
-discordSuperUtils
-PyNaCl
-ffmpeg
-discord.py[voice]
