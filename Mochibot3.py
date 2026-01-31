@@ -1,225 +1,401 @@
-from discord.ext import commands
-import discordSuperUtils
-from discordSuperUtils import MusicManager
 import discord
-import youtube_dl
-
-client_id = "434afb9a84174e83bbbdc3ea3f49a961"
-client_secret = "d7e3e90db6a547c98da79deebfa58d39"
-
-bot = commands.Bot(command_prefix="!")
-MusicManager = MusicManager(bot, client_id=client_id,
-                                  client_secret=client_secret, spotify_support=True)
-
-
-@MusicManager.event()
-async def on_music_error(ctx, error):
-    raise error  # add your error handling here! Errors are listed in the documentation.
+from discord.ext import commands
+from discord import FFmpegPCMAudio
+import yt_dlp
+import asyncio
+import os
+import threading
+from flask import Flask, request
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
 
 
-@MusicManager.event()
-async def on_queue_end(ctx):
-    print(f"The queue has ended in {ctx}")
-    # You could wait and check activity, etc...
+# -------------------------
+# CONFIG
+# -------------------------
+os.environ["YTDLP_JS_RUNTIME"] = "node:C:/Program Files/nodejs/node.exe"
+
+TOKEN = ""
+
+SPOTIFY_CLIENT_ID = ""
+SPOTIFY_CLIENT_SECRET = ""
+
+# -------------------------
+# Discord bot setup
+# -------------------------
+
+intents = discord.Intents.default()
+intents.message_content = True
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+last_output_channel = None
+guild_queues = {}
+
+# -------------------------
+# Spotify API setup
+# -------------------------
+
+sp = spotipy.Spotify(
+    auth_manager=SpotifyClientCredentials(
+        client_id=SPOTIFY_CLIENT_ID,
+        client_secret=SPOTIFY_CLIENT_SECRET
+    )
+)
+
+def resolve_spotify_track(url):
+    try:
+        track_id = url.split("/track/")[1].split("?")[0]
+        data = sp.track(track_id)
+        name = data["name"]
+        artist = data["artists"][0]["name"]
+        return f"{name} {artist}"
+    except Exception as e:
+        print("Spotify resolver error:", e)
+        return None
+
+# -------------------------
+# YouTube search (returns video URL)
+# -------------------------
+def youtube_search(query):
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "quiet": True,
+        "default_search": "ytsearch1",
+        "postprocessor_args": {
+            "youtube": [
+                "--js-runtime",
+                "node:C:/Program Files/nodejs/node.exe"
+            ]
+        }
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(query, download=False)
+        if "entries" in info:
+            return info["entries"][0]["webpage_url"]
+        return info["webpage_url"]
 
 
-@MusicManager.event()
-async def on_inactivity_disconnect(ctx):
-    print(f"I have left {ctx} due to inactivity..")
+# -------------------------
+# Download audio (stable)
+# -------------------------
+def download_audio(url):
+    # Remove any previous audio files
+    for f in os.listdir():
+        if f.startswith("current_song"):
+            try:
+                os.remove(f)
+            except:
+                pass
+
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "quiet": True,
+        "outtmpl": "current_song.%(ext)s",
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        file_path = ydl.prepare_filename(info)
+
+    # Ensure file is fully written before returning
+    while not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+        time.sleep(0.05)
+
+    return file_path
 
 
-@MusicManager.event()
-async def on_play(ctx, player):
-    await ctx.send(f"Playing {player}")
+# -------------------------
+# FFmpeg path
+# -------------------------
 
-@bot.event
-async def on_ready():
-    print("Music manager is ready.", bot.user)
+def get_ffmpeg_path():
+    if os.system("ffmpeg -version >nul 2>&1") == 0:
+        return "ffmpeg"
 
-@bot.command()
-async def leave(ctx):
-    if await MusicManager.leave(ctx):
-        await ctx.send("Left Voice Channel")
+    local_path = os.path.join(os.getcwd(), "ffmpeg.exe")
+    if os.path.isfile(local_path):
+        return local_path
 
+    print("ERROR: ffmpeg not found.")
+    return None
 
-@bot.command()
-async def np(ctx):
-    if player := await MusicManager.now_playing(ctx):
-        duration_played = await MusicManager.get_player_played_duration(ctx, player)
-        # You can format it, of course.
+# -------------------------
+# Playback
+# -------------------------
 
-        await ctx.send(
-            f"Currently playing: {player}, \n"
-            f"Duration: {duration_played}/{player.duration}"
-        )
+async def play_next(guild_id):
+    queue = guild_queues.get(guild_id)
 
-
-@bot.command()
-async def join(ctx):
-    if await MusicManager.join(ctx):
-        await ctx.send("Joined Voice Channel")
+    # If queue is empty → announce and stop
+    if not queue:
+        channel = last_output_channel
+        if channel:
+            await channel.send("🎶 Queue finished. No more songs.")
+        return
 
 
-@bot.command()
-async def play(ctx, *, query: str):
-    if not ctx.voice_client or not ctx.voice_client.is_connected():
-        await MusicManager.join(ctx)
-    
-    async with ctx.typing():
-        players = await MusicManager.create_player(query, ctx.author)
 
-    if players:
-        if await MusicManager.queue_add(
-            players=players, ctx=ctx
-        ) and not await MusicManager.play(ctx):
-            await ctx.send("Added to queue")
+    url = queue.pop(0)
 
-    else:
-        await ctx.send("Query not found.")
+    # Get voice client
+    voice = discord.utils.get(bot.voice_clients, guild__id=guild_id)
+    if not voice:
+        print("DEBUG: No voice client for guild", guild_id)
+        return
 
-@bot.command()
-async def pause(ctx):
-    if await MusicManager.pause(ctx):
-        await ctx.send("Player paused.")
+    # Resolve FFmpeg
+    ffmpeg_path = get_ffmpeg_path()
+    if not ffmpeg_path:
+        print("DEBUG: FFmpeg path missing")
+        return
 
-@bot.command()
-async def stop(ctx):
-    if await MusicManager.pause(ctx):
-        await ctx.send("Player stopped.")
+    # Download audio
+    filepath = download_audio(url)
 
-@bot.command()
-async def resume(ctx):
-    if await MusicManager.resume(ctx):
-        await ctx.send("Player resumed.")
+    # Debugging to ensure file is valid
+    print("DEBUG filepath:", filepath)
+    print("DEBUG exists:", os.path.exists(filepath))
+    print("DEBUG cwd:", os.getcwd())
+    print("DEBUG ffmpeg:", ffmpeg_path)
+
+    if not os.path.exists(filepath):
+        print("ERROR: File does not exist after download:", filepath)
+        return
+
+    # Create audio source
+    source = discord.FFmpegPCMAudio(filepath, executable=ffmpeg_path)
+
+    # Safe callback wrapper
+    def after_play(err):
+        try:
+            if err:
+                print("Playback error:", err)
+            asyncio.run_coroutine_threadsafe(play_next(guild_id), bot.loop)
+        except Exception as e:
+            print("Callback exception:", e)
+
+    # Start playback
+    try:
+        voice.play(source, after=after_play)
+    except Exception as e:
+        print("ERROR: voice.play failed:", e)
+        return
+
+    # Wait until playback actually starts (but with timeout)
+    for _ in range(40):  # 2 seconds max
+        if voice.is_playing():
+            break
+        await asyncio.sleep(0.05)
+
+    if not voice.is_playing():
+        print("ERROR: Playback never started for:", filepath)
+        return
+
+    # Announce now playing
+    channel = last_output_channel
+    if channel:
+        await channel.send(f"🎵 Now playing: {url}")
+
+# -------------------------
+# Flask server
+# -------------------------
+
+app = Flask(__name__)
+
+@app.route("/command", methods=["POST"])
+def command():
+    global last_output_channel
+
+    data = request.get_json(silent=True)
+    if not data:
+        return "Invalid JSON", 400
+
+    cmd = data.get("command")
+    if not cmd:
+        return "Missing 'command'", 400
+
+    print("Received command from Streamer.bot:", cmd)
+
+    parts = cmd.split(" ", 1)
+    command_name = parts[0].lstrip("!")
+    arg = parts[1] if len(parts) > 1 else None
+
+    command_obj = bot.get_command(command_name)
+    if not command_obj:
+        print("Unknown command:", command_name)
+        return "Unknown command", 400
+
+    async def run_command():
+        try:
+            if not last_output_channel:
+                print("No last_output_channel set. Use !join first.")
+                return
+
+            # Proper fake context for Streamer.bot-triggered commands
+            class Ctx:
+                print("DEBUG: NEW Ctx class is running")
+
+                def __init__(self, bot, channel, command_obj):
+                    self.bot = bot
+                    self.guild = channel.guild
+                    self.channel = channel
+                    self.author = channel.guild.me
+                    self.message = None
+                    self.prefix = "!"
+                    self.command = command_obj
+
+                    # REQUIRED so Discord.py doesn't misinterpret ctx.guild
+                    self.voice_client = channel.guild.voice_client
+
+                async def send(self, msg):
+                    await self.channel.send(msg)
+
+            ctx = Ctx(bot, last_output_channel, command_obj)
+
+            if arg:
+                await command_obj(ctx, query=arg)
+            else:
+                await command_obj(ctx)
+
+        except Exception as e:
+            print("Error inside run_command():", e)
+
+    bot.loop.create_task(run_command())
+    return "OK", 200
 
 
-@bot.command()
-async def volume(ctx, volume: int):
-    await MusicManager.volume(ctx, volume)
+def run_flask():
+    print("Starting Flask server...")
+    app.run(host="0.0.0.0", port=5000)
 
+threading.Thread(target=run_flask, daemon=True).start()
 
-@bot.command()
-async def loop(ctx):
-    is_loop = await MusicManager.loop(ctx)
-
-    if is_loop is not None:
-        await ctx.send(f"Looping toggled to {is_loop}")
-
-
-@bot.command()
-async def shuffle(ctx):
-    is_shuffle = await MusicManager.shuffle(ctx)
-
-    if is_shuffle is not None:
-        await ctx.send(f"Shuffle toggled to {is_shuffle}")
-
-@bot.command(pass_context=True)
-async def commands(ctx):
-    embed = discord.Embed(title="nice bot", description="A Very mochi bot ~chi. List of commands are:", color=0xeee657)
-    embed.add_field(name="!info", value="Gives a little info about the bot", inline=False)
-    embed.add_field(name="!mochi", value="plays a gif of monster rancher mochi", inline=False)
-    embed.add_field(name="!doge", value="plays a gif of a shiba inu", inline=False)
-    embed.add_field(name="!commands", value="Gives this message", inline=False)
-    embed.add_field(name="!play", value="Adds youtube/spotify to queue", inline=False)
-    embed.add_field(name="!skip", value="Skips video", inline=False)
-    embed.add_field(name="!pause", value="Pause video", inline=False)
-    embed.add_field(name="!stop", value="stops video", inline=False)    
-    await ctx.send(embed=embed)
-
-@bot.command(pass_context=True)
-async def info(ctx):
-    await ctx.send("Bot inspired by monster rancher mochi")
-
-@bot.command(pass_context=True)
-async def mochi(ctx):
-    await ctx.send("https://66.media.tumblr.com/93fcfa886fe7781eed0db910c19a09c3/tumblr_mt7emv63Zl1s5p5m0o1_400.gif")
-
-@bot.command()
-async def autoplay(ctx):
-    is_autoplay = await MusicManager.autoplay(ctx)
-
-    if is_autoplay is not None:
-        await ctx.send(f"Autoplay toggled to {is_autoplay}")
-
-
-@bot.command()
-async def queueloop(ctx):
-    is_loop = await MusicManager.queueloop(ctx)
-
-    if is_loop is not None:
-        await ctx.send(f"Queue looping toggled to {is_loop}")
-
-
-@bot.command()
-async def history(ctx):
-    if ctx_queue := await MusicManager.get_queue(ctx):
-        formatted_history = [
-            f"Title: '{x.title}'\nRequester: {x.requester.mention}"
-            for x in ctx_queue.history
-        ]
-
-        embeds = discordSuperUtils.generate_embeds(
-            formatted_history,
-            "Song History",
-            "Shows all played songs",
-            25,
-            string_format="{}",
-        )
-
-        page_manager = discordSuperUtils.PageManager(ctx, embeds, public=True)
-        await page_manager.run()
-
-
-@bot.command()
-async def skip(ctx, index: int = None):
-    await MusicManager.skip(ctx, index)
-
-@bot.command()
-async def next(ctx, index: int = None):
-    await MusicManager.skip(ctx, index)
+# -------------------------
+# Commands
+# -------------------------
 
 @bot.command()
 async def queue(ctx):
-    if ctx_queue := await MusicManager.get_queue(ctx):
-        formatted_queue = [
-            f"Title: '{x.title}\nRequester: {x.requester.mention}"
-            for x in ctx_queue.queue
-        ]
+    queue = guild_queues.get(ctx.guild.id, [])
 
-        embeds = discordSuperUtils.generate_embeds(
-            formatted_queue,
-            "Queue",
-            f"Now Playing: {await MusicManager.now_playing(ctx)}",
-            25,
-            string_format="{}",
-        )
+    if not queue:
+        await ctx.send("The queue is currently empty.")
+        return
 
-        page_manager = discordSuperUtils.PageManager(ctx, embeds, public=True)
-        await page_manager.run()
+    message = "**Current Queue:**\n"
+    for i, url in enumerate(queue, start=1):
+        message += f"{i}. {url}\n"
 
+    await ctx.send(message)
 
 @bot.command()
-async def rewind(ctx, index: int = None):
-    await MusicManager.previous(ctx, index)
+async def join(ctx):
+    global last_output_channel
+    last_output_channel = ctx.channel
 
+    if ctx.author.voice is None:
+        await ctx.send("You're not in a voice channel.")
+        return
+
+    channel = ctx.author.voice.channel
+
+    existing = discord.utils.get(bot.voice_clients, guild=ctx.guild)
+    if existing and existing.is_connected():
+        await existing.disconnect(force=True)
+
+    await channel.connect()
+    await ctx.send(f"Joined {channel.name}")
 
 @bot.command()
-async def ls(ctx):
-    if queue := await MusicManager.get_queue(ctx):
-        loop = queue.loop
-        loop_status = None
+async def leave(ctx):
+    global last_output_channel
+    last_output_channel = ctx.channel
 
-        if loop == discordSuperUtils.Loops.LOOP:
-            loop_status = "Looping enabled."
+    voice = discord.utils.get(bot.voice_clients, guild=ctx.guild)
+    if voice and voice.is_connected():
+        await voice.disconnect(force=True)
+        await ctx.send("Disconnected.")
+    else:
+        await ctx.send("I'm not in a voice channel.")
 
-        elif loop == discordSuperUtils.Loops.QUEUE_LOOP:
-            loop_status = "Queue looping enabled."
+@bot.command()
+async def play(ctx, *, query=None):
+    if query is None:
+        await ctx.send("Usage: `!play <song name or URL>`")
+        return
 
-        elif loop == discordSuperUtils.Loops.NO_LOOP:
-            loop_status = "No loop enabled."
+    global last_output_channel
+    last_output_channel = ctx.channel
 
-        if loop_status:
-            await ctx.send(loop_status)
+    if ctx.author.voice is None:
+        await ctx.send("Join a voice channel first.")
+        return
+
+    voice = discord.utils.get(bot.voice_clients, guild=ctx.guild)
+    if not voice:
+        voice = await ctx.author.voice.channel.connect()
+
+    # Spotify → YouTube search
+    if "spotify.com/track" in query:
+        resolved = resolve_spotify_track(query)
+        if not resolved:
+            await ctx.send("Failed to resolve Spotify track.")
+            return
+        query = resolved
+
+    # YouTube search → ALWAYS use webpage_url
+    try:
+        info = yt_dlp.YoutubeDL({"quiet": True, "default_search": "ytsearch1"}).extract_info(query, download=False)
+        if "entries" in info:
+            url = info["entries"][0]["webpage_url"]
+        else:
+            url = info["webpage_url"]
+    except Exception as e:
+        print("YouTube search error:", e)
+        await ctx.send("Failed to search YouTube.")
+        return
+
+    # Get queue for this guild
+    queue = guild_queues.setdefault(ctx.guild.id, [])
+
+    # If nothing is playing → play immediately
+    if not voice.is_playing():
+        queue.append(url)
+        await ctx.send(f"Playing: **{query}**")
+        await play_next(ctx.guild.id)
+        return
+
+    # Otherwise → add to queue
+    queue.append(url)
+    await ctx.send(f"Added to queue: **{query}**")
+    return
+
+@bot.command()
+async def skip(ctx):
+    voice = discord.utils.get(bot.voice_clients, guild=ctx.guild)
+
+    if not voice or not voice.is_playing():
+        await ctx.send("Nothing is currently playing.")
+        return
+
+    await ctx.send("⏭️ Skipping current song...")
+    voice.stop()  # <-- THIS triggers after_play(), which triggers play_next()
+
+@bot.command()
+async def stop(ctx):
+    queue = guild_queues.get(ctx.guild.id)
+    if queue:
+        queue.clear()
+
+    voice = discord.utils.get(bot.voice_clients, guild=ctx.guild)
+    if voice and voice.is_playing():
+        voice.stop()
+
+    await ctx.send("Stopped playback and cleared queue.")
 
 
-bot.run('NDkzNjQ4NDIyNjcxMzUxODE5.DpU4NA.nvKiZS7psY0i0RXbvyQ9rXFlYzE')
+# -------------------------
+# Run bot
+# -------------------------
+bot.run('')
