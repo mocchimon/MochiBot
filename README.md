@@ -11,7 +11,10 @@ A Discord bot made in Python.
 - YouTube / Spotify queue system  
 - Spotify playlist support  
 - Processes search queries (not just raw links)  
-- Send commands from Twitch chat directly to Discord  
+- Send commands from Twitch chat directly to Discord
+
+requires:
+node.js
 
 ---
 
@@ -23,6 +26,3 @@ Twitch side sends command:
 Discord recieves command through streamer.bot:
 ![Discord Side Screenshot](https://github.com/mocchimon/MochiBot/blob/master/Discord-side.png)
 
-
-requires:
-node.js
