@@ -1,23 +1,28 @@
 # MochiBot
-Discord bot made in python
+A Discord bot made in Python.
 
-Features:
-Webserver
-Streamer.bot command integration
-Musicbot:
-!play
-!queue
-!skip
-Youtube/spotify queue system
-Spotify playlist support
-Processesing queries instead of just youtube/spotify links
-send commands from twitch chat to discord
+## ✨ Features
+- Webserver for Twitch → Discord command routing  
+- Streamer.bot command integration  
+- Music bot commands:  
+  - `!play`  
+  - `!queue`  
+  - `!skip`  
+- YouTube / Spotify queue system  
+- Spotify playlist support  
+- Processes search queries (not just raw links)  
+- Send commands from Twitch chat directly to Discord  
 
+---
+
+
+## 🎮 How It Works
 Twitch side sends command:
-https://github.com/mocchimon/MochiBot/blob/master/twitch-command.png
+![Twitch Command Screenshot](https://github.com/mocchimon/MochiBot/blob/master/twitch-command.png)
 
 Discord recieves command through streamer.bot:
-https://github.com/mocchimon/MochiBot/blob/master/Discord-side.png
+![Discord Side Screenshot](https://github.com/mocchimon/MochiBot/blob/master/Discord-side.png)
+
 
 requires:
 node.js
