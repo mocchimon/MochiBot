@@ -6,10 +6,9 @@ Webserver
 Streamer.bot command integration
 Musicbot
 Youtube/spotify queue system
-
-WIP:
-Processesing queries instead of just youtube/spotify links
 Spotify playlist support
+Processesing queries instead of just youtube/spotify links
+send commands from twitch chat to discord
 
 requires:
 node.js
