@@ -28,6 +28,7 @@ SPOTIFY_CLIENT_SECRET = ""
 spotify_token = None
 spotify_token_expiry = 0
 
+
 async def get_spotify_token():
     global spotify_token, spotify_token_expiry
 
@@ -247,6 +248,25 @@ async def resolve_spotify_playlist(url):
 
     return results
 
+@bot.command()
+async def shuffle(ctx):
+    guild_id = ctx.guild.id
+    queue = guild_queues.get(guild_id, [])
+
+    # If there's 0 or 1 track in the queue, nothing to shuffle
+    if len(queue) < 2:
+        await ctx.send("Not enough songs in the queue to shuffle.")
+        return
+
+    import random
+    random.shuffle(queue)
+
+    await ctx.send("🔀 Queue shuffled!")
+
+    # Update Twitch queue after shuffle
+    await update_twitch_queue(guild_id)
+
+
 
 async def process_spotify_item(item, results):
     track = item.get("track")
@@ -300,6 +320,7 @@ async def resolve_youtube(query):
             artist, title = raw.split(" - ", 1)
             return artist.strip(), title.strip()
 
+        # No dash → treat whole thing as title
         return None, raw.strip()
 
     def run_ydl():
@@ -315,51 +336,63 @@ async def resolve_youtube(query):
     info = await asyncio.to_thread(run_ydl)
     results = []
 
-    # Playlist
+    # -------------------------
+    # PLAYLIST
+    # -------------------------
     if "entries" in info:
         for entry in info["entries"]:
-            if entry:
-                raw_title = entry.get("title")
-                clean = clean_title(raw_title)
-                artist, title = split_artist_title(clean)
+            if not entry:
+                continue
 
-                results.append({
-                    "title": title,
-                    "artist": artist,
-                    "url": entry.get("url") or entry.get("webpage_url"),
-                    "duration": entry.get("duration"),
-                    "source": "youtube",
-                    "resolved": True
-                })
+            raw_title = entry.get("title")
+            clean = clean_title(raw_title)
+            artist, title = split_artist_title(clean)
+
+            # Guarantee valid strings
+            artist = artist or "Unknown"
+            title = title or clean or "Unknown Title"
+
+            # Guarantee full URL
+            video_id = entry.get("id")
+            url = f"https://www.youtube.com/watch?v={video_id}"
+
+            # Guarantee duration
+            duration = entry.get("duration") or 0
+
+            results.append({
+                "title": title,
+                "artist": artist,
+                "url": url,
+                "duration": duration,
+                "source": "youtube",
+                "resolved": True
+            })
+
         return results
 
-    # Single video
+    # -------------------------
+    # SINGLE VIDEO
+    # -------------------------
     raw_title = info.get("title")
     clean = clean_title(raw_title)
     artist, title = split_artist_title(clean)
 
+    artist = artist or "Unknown"
+    title = title or clean or "Unknown Title"
+
+    video_id = info.get("id")
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    duration = info.get("duration") or 0
+
     return [{
         "title": title,
         "artist": artist,
-        "url": info.get("webpage_url"),
-        "duration": info.get("duration"),
+        "url": url,
+        "duration": duration,
         "source": "youtube",
         "resolved": True
     }]
-# -------------------------
-# YouTube search (returns video URL)
-# -------------------------
 async def youtube_search(query):
-    """
-    Returns a metadata object:
-    {
-        "title": "...",
-        "url": "...",
-        "duration": ...
-    }
-    """
-
-    # Clean query (Spotify sometimes includes weird characters)
     query = query.replace("’", "'").strip()
 
     def run_ydl(q):
@@ -379,7 +412,7 @@ async def youtube_search(query):
     except:
         info = None
 
-    # If first attempt fails, try again with quotes
+    # Retry with quotes
     if not info:
         try:
             info = await asyncio.to_thread(run_ydl, f"\"{query}\"")
@@ -389,20 +422,21 @@ async def youtube_search(query):
     if not info:
         return None
 
-    # ytsearch1 returns a list under "entries"
+    # ytsearch1 returns entries
     if "entries" in info:
         info = info["entries"][0]
 
-    url = info.get("webpage_url")
-    title = info.get("title")
+    # Guarantee full URL
+    video_id = info.get("id")
+    url = f"https://www.youtube.com/watch?v={video_id}"
 
-    if not url or not title:
-        return None
+    title = info.get("title") or "Unknown Title"
+    duration = info.get("duration") or 0
 
     return {
         "title": title,
         "url": url,
-        "duration": info.get("duration")
+        "duration": duration
     }
 # -------------------------
 # Download audio (stable)
@@ -793,28 +827,77 @@ async def play(ctx, *, query=None):
             await ctx.send("Failed to resolve Spotify link.")
             return
 
-        # ⭐ Detect if queue was empty BEFORE adding
         was_empty = (len(queue) == 0)
 
-        # Add tracks
         for t in tracks:
             if t:
                 queue.append(t)
 
         print("DEBUG queue in !play AFTER adding:", queue)
 
-        # ⭐ If queue was empty, push the first track back in
-        #    so play_next sees a non-empty queue for Twitch display
         if was_empty:
             print("DEBUG pushing first track back into queue for display")
-            queue.insert(0, queue[0])   # <-- ⭐ THE FIX
-
+            queue.insert(0, queue[0])
             print("DEBUG calling play_next from !play (Spotify)")
             await play_next(guild_id)
         else:
             await ctx.send(f"Added {len(tracks)} track(s) to the queue.")
 
         return
+
+    # -------------------------------------------------
+    # YOUTUBE LINKS (video or playlist)
+    # -------------------------------------------------
+    if "youtube.com" in query or "youtu.be" in query:
+        tracks = await resolve_youtube(query)
+
+        if not tracks:
+            await ctx.send("Failed to resolve YouTube link.")
+            return
+
+        was_empty = (len(queue) == 0)
+
+        for t in tracks:
+            queue.append(t)
+
+        print("DEBUG queue in !play AFTER adding:", queue)
+
+        if was_empty:
+            print("DEBUG calling play_next from !play (YouTube)")
+            await play_next(guild_id)
+        else:
+            await ctx.send(f"Added {len(tracks)} track(s) to the queue.")
+
+        return
+
+    # -------------------------------------------------
+    # SEARCH FALLBACK (YouTube search)
+    # -------------------------------------------------
+    yt = await youtube_search(query)
+
+    if not yt:
+        await ctx.send("No results found.")
+        return
+
+    track = {
+        "title": yt["title"],
+        "artist": None,
+        "url": yt["url"],
+        "duration": yt["duration"],
+        "source": "youtube",
+        "resolved": True
+    }
+
+    was_empty = (len(queue) == 0)
+    queue.append(track)
+
+    print("DEBUG queue in !play AFTER adding:", queue)
+
+    if was_empty:
+        print("DEBUG calling play_next from !play (Search)")
+        await play_next(guild_id)
+    else:
+        await ctx.send(f"Added **{track['title']}** to the queue.")
 
 @bot.command()
 async def queue(ctx):
