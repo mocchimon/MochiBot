@@ -4,7 +4,10 @@ Discord bot made in python
 Features:
 Webserver
 Streamer.bot command integration
-Musicbot
+Musicbot:
+!play
+!queue
+!skip
 Youtube/spotify queue system
 Spotify playlist support
 Processesing queries instead of just youtube/spotify links
