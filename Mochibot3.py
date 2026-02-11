@@ -29,6 +29,7 @@ spotify_token = None
 spotify_token_expiry = 0
 
 
+
 async def get_spotify_token():
     global spotify_token, spotify_token_expiry
 
@@ -295,32 +296,39 @@ async def process_spotify_item(item, results):
 async def resolve_youtube(query):
     import re
 
+    # ---------------------------------------------------
+    # ⭐ Normalize YouTube short links (youtu.be/VIDEO_ID)
+    # ---------------------------------------------------
+    if "youtu.be/" in query:
+        # Extract the ID from the path
+        video_id = query.split("youtu.be/")[1].split("?")[0]
+        query = f"https://www.youtube.com/watch?v={video_id}"
+        print("DEBUG normalized short link →", query)
+
+    # ---------------------------------------------------
+    # (Optional future expansion)
+    # Normalize Shorts links:
+    # if "youtube.com/shorts/" in query:
+    #     video_id = query.split("shorts/")[1].split("?")[0]
+    #     query = f"https://www.youtube.com/watch?v={video_id}"
+    #     print("DEBUG normalized shorts link →", query)
+    # ---------------------------------------------------
+
     def clean_title(raw):
         if not raw:
             return None
-
-        # Remove junk like (Official Video), [Lyrics], (HD), etc.
         raw = re.sub(r"\(.*?\)", "", raw)
         raw = re.sub(r"\[.*?\]", "", raw)
-
-        # Strip leading/trailing quotes and whitespace
         raw = raw.strip().strip("'\"").strip()
-
         return raw
 
     def split_artist_title(raw):
         if not raw:
             return None, None
-
-        # Normalize dashes
         raw = raw.replace("—", "-").replace("–", "-")
-
-        # Split on first dash
         if " - " in raw:
             artist, title = raw.split(" - ", 1)
             return artist.strip(), title.strip()
-
-        # No dash → treat whole thing as title
         return None, raw.strip()
 
     def run_ydl():
@@ -348,15 +356,11 @@ async def resolve_youtube(query):
             clean = clean_title(raw_title)
             artist, title = split_artist_title(clean)
 
-            # Guarantee valid strings
             artist = artist or "Unknown"
             title = title or clean or "Unknown Title"
 
-            # Guarantee full URL
             video_id = entry.get("id")
             url = f"https://www.youtube.com/watch?v={video_id}"
-
-            # Guarantee duration
             duration = entry.get("duration") or 0
 
             results.append({
@@ -496,23 +500,35 @@ def strip_playlist(url):
     return url
 
 async def play_next(guild_id):
-    queue = guild_queues.get(guild_id)
+    guild = bot.get_guild(guild_id)
+    if not guild:
+        print("DEBUG: Guild not found")
+        return
 
-    # Debug: show queue before popping
+    voice = guild.voice_client
+    if not voice:
+        print("DEBUG: No voice client for guild", guild_id)
+        return
+
+    # Prevent overlapping playback
+    if voice.is_playing() or voice.is_paused():
+        print("DEBUG: Tried to play while already playing")
+        return
+
+    queue = guild_queues.get(guild_id, [])
     print("DEBUG queue:", queue)
 
-    # If queue is empty → announce and stop
     if not queue:
         channel = last_output_channel
         if channel:
             await channel.send("🎶 Queue finished. No more songs.")
         return
 
-    # Pop the next track
+    # Pop next track
     track = queue.pop(0)
     print("DEBUG popped track:", track, type(track))
 
-    # ⭐ Lazy resolve unresolved Spotify tracks
+    # Lazy Spotify resolve
     if track.get("source") == "spotify" and not track.get("resolved"):
         print("DEBUG lazy resolving:", track["title"], track["artist"])
         yt = await youtube_search(f"{track['title']} {track['artist']}")
@@ -528,15 +544,10 @@ async def play_next(guild_id):
             print("DEBUG lazy resolve failed, skipping")
             return await play_next(guild_id)
 
-    # Normalize: convert strings → dicts
+    # Normalize string → dict
     if isinstance(track, str):
-        track = {
-            "title": track,
-            "url": track,
-            "duration": None
-        }
+        track = {"title": track, "url": track, "duration": None}
 
-    # Extract URL safely
     url = track.get("url")
     print("DEBUG resolved url:", url)
 
@@ -544,56 +555,42 @@ async def play_next(guild_id):
         print("ERROR: Track missing URL:", track)
         return
 
-    # Strip playlist parameters
+    # Normalize youtu.be → youtube.com
     url = strip_playlist(url)
     print("DEBUG stripped url:", url)
 
-    # ⭐ Correct voice client lookup
-    guild = bot.get_guild(guild_id)
-    voice = guild.voice_client if guild else None
-
-    print("DEBUG voice client:", voice, "type:", type(voice))
-
-    if not voice:
-        print("DEBUG: No voice client for guild", guild_id)
-        return
-
-    # Resolve FFmpeg
+    # Resolve FFmpeg path
     ffmpeg_path = get_ffmpeg_path()
     if not ffmpeg_path:
         print("DEBUG: FFmpeg path missing")
         return
 
-    # Download audio (ASYNC SAFE)
+    # Download audio
     print("DEBUG: starting download for:", url)
     filepath = await download_audio(url)
     print("DEBUG: download finished:", filepath)
-
-    # Debugging to ensure file is valid
-    print("DEBUG filepath:", filepath)
-    print("DEBUG exists:", os.path.exists(filepath))
-    print("DEBUG file size:", os.path.getsize(filepath) if os.path.exists(filepath) else "N/A")
-    print("DEBUG cwd:", os.getcwd())
-    print("DEBUG ffmpeg:", ffmpeg_path)
 
     if not os.path.exists(filepath):
         print("ERROR: File does not exist after download:", filepath)
         return
 
-    # Create audio source
-    source = discord.FFmpegPCMAudio(filepath, executable=ffmpeg_path)
+    # Wrap FFmpeg in PCMVolumeTransformer to prevent early exit
+    source = discord.PCMVolumeTransformer(
+        discord.FFmpegPCMAudio(filepath, executable=ffmpeg_path)
+    )
     print("DEBUG source:", source)
 
-    # Safe callback wrapper
+    # Safe callback
     def after_play(err):
+        if err:
+            print("Playback error:", err)
+        fut = asyncio.run_coroutine_threadsafe(play_next(guild_id), bot.loop)
         try:
-            if err:
-                print("Playback error:", err)
-            asyncio.run_coroutine_threadsafe(play_next(guild_id), bot.loop)
+            fut.result()
         except Exception as e:
             print("Callback exception:", e)
 
-    # Start playback
+    # Start playback safely
     try:
         voice.play(source, after=after_play)
         print("DEBUG: voice.play() called successfully")
@@ -601,21 +598,16 @@ async def play_next(guild_id):
         print("ERROR: voice.play failed:", e)
         return
 
-    # Give FFmpeg a moment to spin up
+    # Let FFmpeg spin up
     await asyncio.sleep(0.1)
 
-    # ⭐ STORE CURRENT SONG AS "Artist — Title"
+    # Store current song
     global current_song
-
     title = track.get("title", url)
     artist = track.get("artist")
+    current_song = f"{artist} — {title}" if artist else title
 
-    if artist:
-        current_song = f"{artist} — {title}"
-    else:
-        current_song = title
-
-    # Announce now playing
+    # Announce
     channel = last_output_channel
     if channel:
         await channel.send(f"🎵 Now playing: {current_song}")
