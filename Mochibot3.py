@@ -30,7 +30,7 @@ spotify_token_expiry = 0
 
 
 
-sync def get_spotify_token():
+async def get_spotify_token():
     global spotify_token, spotify_token_expiry
 
     # Reuse token if still valid
@@ -303,23 +303,37 @@ async def resolve_spotify_track(url):
         "resolved": False
     }
 
-@bot.command()
+@@bot.command()
 async def shuffle(ctx):
     guild_id = ctx.guild.id
-    queue = guild_queues.get(guild_id, [])
+    queue = guild_queues.setdefault(guild_id, [])
 
-    # If there's 0 or 1 track in the queue, nothing to shuffle
     if len(queue) < 2:
         await ctx.send("Not enough songs in the queue to shuffle.")
         return
 
-    import random
-    random.shuffle(queue)
+    # Tell Flask the queue is being updated
+    queue_updating[guild_id] = True
+    try:
+        import random
+        random.shuffle(queue)
+    finally:
+        # Signal that the update is complete
+        queue_updating[guild_id] = False
 
-    await ctx.send("🔀 Queue shuffled!")
+    # Build a readable queue preview
+    lines = []
+    for i, track in enumerate(queue, start=1):
+        title = track.get("title", "Unknown")
+        artist = track.get("artist")
+        if artist:
+            lines.append(f"{i}. {artist} — {title}")
+        else:
+            lines.append(f"{i}. {title}")
 
-    # Update Twitch queue after shuffle
-    await update_twitch_queue(guild_id)
+    queue_text = "\n".join(lines)
+
+    await ctx.send(f"🔀 Queue shuffled!\n\n**New order:**\n{queue_text}")
 
 
 
@@ -755,6 +769,11 @@ def songqueue():
         return Response(text, mimetype="text/plain; charset=utf-8")
 
     guild_id = list(guild_queues.keys())[0]
+
+    # ⭐ Wait until the queue is not being mutated
+    while queue_updating.get(guild_id, False):
+        time.sleep(0.01)
+
     queue = guild_queues.get(guild_id, [])
 
     parts = []
@@ -1098,29 +1117,35 @@ async def skip(ctx):
 
     await ctx.send("⏭️ Skipping current song...")
 
-    # ⭐ DO NOT pop from the queue under Option A
-    # The queue contains only upcoming songs
-    # The current song is NOT in the queue
-
-    voice.stop()
+    # Signal that a queue-related mutation is happening
+    queue_updating[guild_id] = True
+    try:
+        voice.stop()
+    finally:
+        queue_updating[guild_id] = False
 
 @bot.command()
 async def stop(ctx):
     guild_id = ctx.guild.id
 
-    # Clear queue
-    queue = guild_queues.get(guild_id)
-    if queue:
-        queue.clear()
+    # Signal that a queue-related mutation is happening
+    queue_updating[guild_id] = True
+    try:
+        # Clear queue
+        queue = guild_queues.get(guild_id)
+        if queue:
+            queue.clear()
 
-    # Stop audio
-    voice = discord.utils.get(bot.voice_clients, guild=ctx.guild)
-    if voice and voice.is_playing():
-        voice.stop()
+        # Stop audio
+        voice = discord.utils.get(bot.voice_clients, guild=ctx.guild)
+        if voice and voice.is_playing():
+            voice.stop()
 
-    # Clear current song for this guild
-    global current_song
-    current_song[guild_id] = None
+        # Clear current song for this guild
+        global current_song
+        current_song[guild_id] = None
+    finally:
+        queue_updating[guild_id] = False
 
     await ctx.send("⏹️ Stopped playback and cleared queue.")
 
