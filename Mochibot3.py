@@ -914,7 +914,7 @@ async def play(ctx, *, query=None):
             return
 
         if not tracks:
-            await ctx.send("Failed to resolve Spotify link.")
+            await ctx.send("Couldn’t resolve that Spotify track — skipping it.")
             return
 
         for t in tracks:
