@@ -356,7 +356,10 @@ async def resolve_youtube(query):
             clean = clean_title(raw_title)
             artist, title = split_artist_title(clean)
 
-            artist = artist or "Unknown"
+            # ⭐ FIX: do NOT force "Unknown"
+            if not artist:
+                artist = None
+
             title = title or clean or "Unknown Title"
 
             video_id = entry.get("id")
@@ -381,7 +384,10 @@ async def resolve_youtube(query):
     clean = clean_title(raw_title)
     artist, title = split_artist_title(clean)
 
-    artist = artist or "Unknown"
+    # ⭐ FIX: do NOT force "Unknown" — leave artist empty if not detected
+    if not artist:
+        artist = None
+
     title = title or clean or "Unknown Title"
 
     video_id = info.get("id")
@@ -510,23 +516,17 @@ async def play_next(guild_id):
         print("DEBUG: No voice client for guild", guild_id)
         return
 
-    # Prevent overlapping playback
-    if voice.is_playing() or voice.is_paused():
-        print("DEBUG: Tried to play while already playing")
-        return
-
     queue = guild_queues.get(guild_id, [])
-    print("DEBUG queue:", queue)
 
+    # If no songs at all, nothing to play
     if not queue:
-        channel = last_output_channel
-        if channel:
-            await channel.send("🎶 Queue finished. No more songs.")
+        print("DEBUG: Queue empty, nothing to play")
         return
 
-    # Pop next track
-    track = queue.pop(0)
-    print("DEBUG popped track:", track, type(track))
+    print("DEBUG play_next START, queue snapshot:", queue)
+
+    # DO NOT POP YET — just peek
+    track = queue[0]
 
     # Lazy Spotify resolve
     if track.get("source") == "spotify" and not track.get("resolved"):
@@ -542,6 +542,7 @@ async def play_next(guild_id):
             })
         else:
             print("DEBUG lazy resolve failed, skipping")
+            queue.pop(0)
             return await play_next(guild_id)
 
     # Normalize string → dict
@@ -549,68 +550,75 @@ async def play_next(guild_id):
         track = {"title": track, "url": track, "duration": None}
 
     url = track.get("url")
-    print("DEBUG resolved url:", url)
-
     if not url:
         print("ERROR: Track missing URL:", track)
-        return
+        return await play_next(guild_id)
 
-    # Normalize youtu.be → youtube.com
     url = strip_playlist(url)
-    print("DEBUG stripped url:", url)
 
-    # Resolve FFmpeg path
     ffmpeg_path = get_ffmpeg_path()
     if not ffmpeg_path:
         print("DEBUG: FFmpeg path missing")
         return
 
-    # Download audio
-    print("DEBUG: starting download for:", url)
     filepath = await download_audio(url)
-    print("DEBUG: download finished:", filepath)
-
     if not os.path.exists(filepath):
         print("ERROR: File does not exist after download:", filepath)
-        return
+        return await play_next(guild_id)
 
-    # Wrap FFmpeg in PCMVolumeTransformer to prevent early exit
     source = discord.PCMVolumeTransformer(
-        discord.FFmpegPCMAudio(filepath, executable=ffmpeg_path)
+        discord.FFmpegPCMAudio(
+            filepath,
+            executable=ffmpeg_path,
+            before_options="-nostdin",
+            options="-vn"
+        )
     )
-    print("DEBUG source:", source)
 
-    # Safe callback
+    # Discord voice often needs a moment to initialize
+    await asyncio.sleep(0.3)
+
     def after_play(err):
         if err:
             print("Playback error:", err)
-        fut = asyncio.run_coroutine_threadsafe(play_next(guild_id), bot.loop)
-        try:
-            fut.result()
-        except Exception as e:
-            print("Callback exception:", e)
+        print("DEBUG after_play fired, scheduling next play_next")
+        bot.loop.create_task(play_next(guild_id))
 
-    # Start playback safely
     try:
+        print("DEBUG: calling voice.play")
         voice.play(source, after=after_play)
-        print("DEBUG: voice.play() called successfully")
     except Exception as e:
         print("ERROR: voice.play failed:", e)
         return
 
-    # Let FFmpeg spin up
+    print("DEBUG: voice.play returned, about to sleep before queue update")
     await asyncio.sleep(0.1)
 
-    # Store current song
-    global current_song
+    print("DEBUG: updating queue AFTER voice.play, before pop:", queue)
+
+    # ⭐ THIS POP MUST EXIST UNDER OPTION A
+    # Remove the current song from the queue
+    queue.pop(0)
+
+    print("DEBUG: queue AFTER pop:", queue)
+
+    # Build current_song
     title = track.get("title", url)
     artist = track.get("artist")
+
+    if isinstance(title, str):
+        title = title.replace('\\"', '"').replace("\\'", "'")
+        title = title.replace('"', "'")
+
+    global current_song
     current_song = f"{artist} — {title}" if artist else title
+    print("DEBUG current_song set to:", current_song)
 
     # Announce
     channel = last_output_channel
     if channel:
         await channel.send(f"🎵 Now playing: {current_song}")
+        print("DEBUG: Now playing message sent")
 # -------------------------
 # Flask server
 # -------------------------
@@ -686,12 +694,46 @@ SongQueue = ""   # must appear before the endpoint
 
 @app.route("/songqueue", methods=["GET"])
 def songqueue():
-    global SongQueue
-    payload = {"queue": SongQueue}
+    global current_song
+
+    # If no guild queues at all
+    if not guild_queues:
+        text = "Queue is empty."
+        return Response(text, mimetype="text/plain; charset=utf-8")
+
+    guild_id = list(guild_queues.keys())[0]
+    queue = guild_queues.get(guild_id, [])
+
+    parts = []
+
+    # ⭐ Add the current song FIRST (Option A)
+    if current_song:
+        parts.append(f"🎵 Now Playing: {current_song}")
+
+    # ⭐ Then list upcoming songs from the queue
+    if queue:
+        for i, track in enumerate(queue, start=1):
+            title = track.get("title", "Unknown")
+            artist = track.get("artist")
+
+            # Clean up escaped quotes
+            if isinstance(title, str):
+                title = title.replace('\\"', '"').replace("\\'", "'")
+
+            if artist:
+                parts.append(f"{i}. {artist} — {title}")
+            else:
+                parts.append(f"{i}. {title}")
+    else:
+        # Queue empty but current_song exists
+        if not current_song:
+            parts.append("Queue is empty.")
+
+    text = " | ".join(parts)
 
     return Response(
-        json.dumps(payload, ensure_ascii=False),
-        mimetype="application/json"
+        text,
+        mimetype="text/plain; charset=utf-8"
     )
 
 
@@ -797,14 +839,18 @@ async def play(ctx, *, query=None):
         voice = await ctx.author.voice.channel.connect()
 
     guild_id = ctx.guild.id
+
+    # Get queue reference
     queue = guild_queues.setdefault(guild_id, [])
 
-    # Debug
+    # 🔍 NEW DEBUG
     print("DEBUG queue in !play BEFORE adding:", queue)
-    print("DEBUG guild_id in !play:", guild_id)
+    print("DEBUG LOCAL queue id:", id(queue))
+    print("DEBUG GLOBAL queue id:", id(guild_queues[guild_id]))
+    print("DEBUG queue length BEFORE adding:", len(queue))
 
     # -------------------------------------------------
-    # SPOTIFY LINKS (track or playlist)
+    # SPOTIFY LINKS
     # -------------------------------------------------
     if "spotify.com" in query:
         if "track" in query:
@@ -819,54 +865,60 @@ async def play(ctx, *, query=None):
             await ctx.send("Failed to resolve Spotify link.")
             return
 
-        was_empty = (len(queue) == 0)
-
         for t in tracks:
             if t:
                 queue.append(t)
 
         print("DEBUG queue in !play AFTER adding:", queue)
+        print("DEBUG queue length AFTER adding:", len(queue))
 
-        if was_empty:
-            print("DEBUG pushing first track back into queue for display")
-            queue.insert(0, queue[0])
-            print("DEBUG calling play_next from !play (Spotify)")
+        if len(queue) == 1:
+            print("DEBUG forcing play_next (Spotify)")
             await play_next(guild_id)
         else:
             await ctx.send(f"Added {len(tracks)} track(s) to the queue.")
-
         return
 
     # -------------------------------------------------
-    # YOUTUBE LINKS (video or playlist)
+    # YOUTUBE LINKS
     # -------------------------------------------------
     if "youtube.com" in query or "youtu.be" in query:
-        tracks = await resolve_youtube(query)
 
+        # Normalize short links
+        if "youtu.be/" in query:
+            video_id = query.split("youtu.be/")[1].split("?")[0]
+            query = f"https://www.youtube.com/watch?v={video_id}"
+
+        # Normalize shorts
+        if "youtube.com/shorts/" in query:
+            video_id = query.split("shorts/")[1].split("?")[0]
+            query = f"https://www.youtube.com/watch?v={video_id}"
+
+        # Normalize mobile
+        query = query.replace("m.youtube.com", "www.youtube.com")
+
+        tracks = await resolve_youtube(query)
         if not tracks:
             await ctx.send("Failed to resolve YouTube link.")
             return
-
-        was_empty = (len(queue) == 0)
 
         for t in tracks:
             queue.append(t)
 
         print("DEBUG queue in !play AFTER adding:", queue)
+        print("DEBUG queue length AFTER adding:", len(queue))
 
-        if was_empty:
-            print("DEBUG calling play_next from !play (YouTube)")
+        if len(queue) == 1:
+            print("DEBUG forcing play_next (YouTube)")
             await play_next(guild_id)
         else:
             await ctx.send(f"Added {len(tracks)} track(s) to the queue.")
-
         return
 
     # -------------------------------------------------
-    # SEARCH FALLBACK (YouTube search)
+    # SEARCH FALLBACK
     # -------------------------------------------------
     yt = await youtube_search(query)
-
     if not yt:
         await ctx.send("No results found.")
         return
@@ -880,13 +932,13 @@ async def play(ctx, *, query=None):
         "resolved": True
     }
 
-    was_empty = (len(queue) == 0)
     queue.append(track)
 
     print("DEBUG queue in !play AFTER adding:", queue)
+    print("DEBUG queue length AFTER adding:", len(queue))
 
-    if was_empty:
-        print("DEBUG calling play_next from !play (Search)")
+    if len(queue) == 1:
+        print("DEBUG forcing play_next (Search)")
         await play_next(guild_id)
     else:
         await ctx.send(f"Added **{track['title']}** to the queue.")
@@ -981,14 +1033,20 @@ async def queue(ctx):
 
 @bot.command()
 async def skip(ctx):
-    voice = discord.utils.get(bot.voice_clients, guild=ctx.guild)
+    guild_id = ctx.guild.id
+    voice = ctx.guild.voice_client
 
     if not voice or not voice.is_playing():
         await ctx.send("Nothing is currently playing.")
         return
 
     await ctx.send("⏭️ Skipping current song...")
-    voice.stop()  # <-- THIS triggers after_play(), which triggers play_next()
+
+    # ⭐ DO NOT pop from the queue under Option A
+    # The queue contains only upcoming songs
+    # The current song is NOT in the queue
+
+    voice.stop()
 
 @bot.command()
 async def stop(ctx):
