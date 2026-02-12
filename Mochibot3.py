@@ -30,7 +30,7 @@ spotify_token_expiry = 0
 
 
 
-async def get_spotify_token():
+sync def get_spotify_token():
     global spotify_token, spotify_token_expiry
 
     # Reuse token if still valid
@@ -71,6 +71,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 last_output_channel = None
 guild_queues = {}
+current_song = {}
+
 
 # -------------------------
 # Spotify API setup
@@ -648,13 +650,12 @@ async def play_next(guild_id):
 
     print("DEBUG: updating queue AFTER voice.play, before pop:", queue)
 
-    # ⭐ THIS POP MUST EXIST UNDER OPTION A
-    # Remove the current song from the queue
+    # ⭐ OPTION A — pop AFTER starting playback
     queue.pop(0)
 
     print("DEBUG: queue AFTER pop:", queue)
 
-    # Build current_song
+    # Build current_song (guild‑aware)
     title = track.get("title", url)
     artist = track.get("artist")
 
@@ -663,13 +664,13 @@ async def play_next(guild_id):
         title = title.replace('"', "'")
 
     global current_song
-    current_song = f"{artist} — {title}" if artist else title
-    print("DEBUG current_song set to:", current_song)
+    current_song[guild_id] = f"{artist} — {title}" if artist else title
+    print("DEBUG current_song set to:", current_song[guild_id])
 
     # Announce
     channel = last_output_channel
     if channel:
-        await channel.send(f"🎵 Now playing: {current_song}")
+        await channel.send(f"🎵 Now playing: {current_song[guild_id]}")
         print("DEBUG: Now playing message sent")
 # -------------------------
 # Flask server
@@ -758,17 +759,18 @@ def songqueue():
 
     parts = []
 
-    # ⭐ Add the current song FIRST (Option A)
-    if current_song:
-        parts.append(f"🎵 Now Playing: {current_song}")
+    # ⭐ Correct: fetch the current song for this guild
+    current = current_song.get(guild_id)
 
-    # ⭐ Then list upcoming songs from the queue
+    if current:
+        parts.append(f"🎵 Now Playing: {current}")
+
+    # ⭐ Upcoming tracks (max 5)
     if queue:
-        for i, track in enumerate(queue, start=1):
+        for i, track in enumerate(queue[:5], start=1):
             title = track.get("title", "Unknown")
             artist = track.get("artist")
 
-            # Clean up escaped quotes
             if isinstance(title, str):
                 title = title.replace('\\"', '"').replace("\\'", "'")
 
@@ -777,8 +779,7 @@ def songqueue():
             else:
                 parts.append(f"{i}. {title}")
     else:
-        # Queue empty but current_song exists
-        if not current_song:
+        if not current:
             parts.append("Queue is empty.")
 
     text = " | ".join(parts)
@@ -895,6 +896,9 @@ async def play(ctx, *, query=None):
     # Get queue reference
     queue = guild_queues.setdefault(guild_id, [])
 
+    # Track whether queue was empty BEFORE adding
+    was_empty = (len(queue) == 0)
+
     # 🔍 NEW DEBUG
     print("DEBUG queue in !play BEFORE adding:", queue)
     print("DEBUG LOCAL queue id:", id(queue))
@@ -924,7 +928,7 @@ async def play(ctx, *, query=None):
         print("DEBUG queue in !play AFTER adding:", queue)
         print("DEBUG queue length AFTER adding:", len(queue))
 
-        if len(queue) == 1:
+        if was_empty:
             print("DEBUG forcing play_next (Spotify)")
             await play_next(guild_id)
         else:
@@ -960,7 +964,7 @@ async def play(ctx, *, query=None):
         print("DEBUG queue in !play AFTER adding:", queue)
         print("DEBUG queue length AFTER adding:", len(queue))
 
-        if len(queue) == 1:
+        if was_empty:
             print("DEBUG forcing play_next (YouTube)")
             await play_next(guild_id)
         else:
@@ -989,7 +993,7 @@ async def play(ctx, *, query=None):
     print("DEBUG queue in !play AFTER adding:", queue)
     print("DEBUG queue length AFTER adding:", len(queue))
 
-    if len(queue) == 1:
+    if was_empty:
         print("DEBUG forcing play_next (Search)")
         await play_next(guild_id)
     else:
