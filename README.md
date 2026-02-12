@@ -7,7 +7,8 @@ A Discord bot made in Python.
 - Music bot commands:  
   - `!play`  
   - `!queue`  
-  - `!skip`  
+  - `!skip`
+  - `!shuffle`
 - YouTube / Spotify queue system  
 - Spotify playlist support  
 - Processes search queries (not just raw links)  
