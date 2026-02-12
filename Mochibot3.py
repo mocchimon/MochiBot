@@ -249,6 +249,58 @@ async def resolve_spotify_playlist(url):
 
     return results
 
+async def resolve_spotify_track(url):
+    try:
+        track_id = url.split("/track/")[1].split("?")[0]
+    except:
+        print("Invalid Spotify track URL")
+        return None
+
+    token = await get_spotify_token()
+    if not token:
+        print("Failed to get Spotify token")
+        return None
+
+    api_url = f"https://api.spotify.com/v1/tracks/{track_id}"
+    headers = {"Authorization": f"Bearer {token}"}
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(api_url, headers=headers) as resp:
+            if resp.status != 200:
+                print("Spotify API error:", resp.status)
+                return None
+            data = await resp.json()
+
+    name = data.get("name")
+    artists = data.get("artists", [])
+    artist = artists[0]["name"] if artists else None
+
+    if not name or not artist:
+        return None
+
+    # Try to resolve to YouTube immediately
+    query = f"{name} {artist}"
+    yt = await youtube_search(query)
+
+    if yt and yt.get("url") and yt.get("title"):
+        return {
+            "title": yt["title"],
+            "artist": artist,
+            "url": yt["url"],
+            "duration": yt["duration"],
+            "source": "youtube",
+            "resolved": True
+        }
+
+    # Fallback: unresolved Spotify entry
+    return {
+        "title": name,
+        "artist": artist,
+        "url": url,
+        "source": "spotify",
+        "resolved": False
+    }
+
 @bot.command()
 async def shuffle(ctx):
     guild_id = ctx.guild.id
