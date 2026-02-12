@@ -1106,15 +1106,23 @@ async def skip(ctx):
 
 @bot.command()
 async def stop(ctx):
-    queue = guild_queues.get(ctx.guild.id)
+    guild_id = ctx.guild.id
+
+    # Clear queue
+    queue = guild_queues.get(guild_id)
     if queue:
         queue.clear()
 
+    # Stop audio
     voice = discord.utils.get(bot.voice_clients, guild=ctx.guild)
     if voice and voice.is_playing():
         voice.stop()
 
-    await ctx.send("Stopped playback and cleared queue.")
+    # Clear current song for this guild
+    global current_song
+    current_song[guild_id] = None
+
+    await ctx.send("⏹️ Stopped playback and cleared queue.")
 
 
 # -------------------------
