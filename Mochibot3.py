@@ -303,7 +303,7 @@ async def resolve_spotify_track(url):
         "resolved": False
     }
 
-@@bot.command()
+@bot.command()
 async def shuffle(ctx):
     guild_id = ctx.guild.id
     queue = guild_queues.setdefault(guild_id, [])
